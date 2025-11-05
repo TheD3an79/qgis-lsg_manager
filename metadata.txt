@@ -1,0 +1,8 @@
+[general]
+name=LSG Manager
+description=This plugin manages the elements to update and export the LSG.
+version=1.0
+qgisMinimumVersion=3.0
+author=Dean Findlay
+email=dean.findlay@derbyshire.gov.uk
+icon=logo.png
