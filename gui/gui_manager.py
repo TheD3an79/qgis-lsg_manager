@@ -3,9 +3,11 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import pyqtSlot
 import os
+from qgis.core import QgsSettings  # only here while testing settings functions
+from ..functions.export_data import ExportData
+from ..functions.lsg_settings import LSGSettings
+from . forms.Export_Dialog import ExportDialog
 
-# TODOs to do
-# TODO:9 - Abstract the action functions out into their own area
 
 class GuiManager:
     def __init__(self, iface):
@@ -16,6 +18,8 @@ class GuiManager:
         self.menu_title = "LS&G Manager"  # Title for the top-level menu
         self.toolbar_title = "LSG Toolbar"  # Title for the toolbar
         self.icon_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "icons")
+        # initialise all the forms
+        # self.export_dialog = ExportDialog()
 
     # called in initgui to initialise the elements of the gui
     def initialiseGui(self):
@@ -85,38 +89,29 @@ class GuiManager:
                 action.deleteLater()
         self.actions_list = []
 
-
     def prepare_gui(self):
         """function that holds all the information on the actions and calls their creation
          and addition to the menu and tollbar"""
-        # action_icon needs to be the full path to the icon with name and extension
+        # action_name - string for the name of the action
+        # action_icon - name of the icon to be used. will be joined to the filepath for icons folder
+        # action_function - name of the function to be triggered
+        # is_menu - bool representing if needing to be added to the menu
+        # is_toolbar - bool representing if needing to be added to the toolbar
 
-        self.populate_gui("first action",
+        # add functionality to export the data in CSV format for GeoGateway or Alloy
+        # rules for this are set in the DTF document provided by Geoplace
+        self.populate_gui("Export Data",
                      os.path.join(self.icon_path, 'question.svg'),
-                     self.run,
+                     ExportData,
                      True,
                      True)
-        self.populate_gui("second action",
-                     os.path.join(self.icon_path, 'question.svg'),
-                     self.run,
-                     True,
-                     False)
-        self.populate_gui("third action",
-                     os.path.join(self.icon_path, 'question.svg'),
-                     self.run,
-                     False,
-                     True)
-        self.populate_gui("fourth action",
-                     os.path.join(self.icon_path, 'question.svg'),
-                     self.run,
-                     False,
-                     True)
-        self.populate_gui("fith action",
-                     os.path.join(self.icon_path, 'question.svg'),
-                     self.run,
-                     True,
-                     False)
 
+        # allows for configuring, and saving, the map layers used in the plugin
+        self.populate_gui("Layer settings",
+                          os.path.join(self.icon_path, 'question.svg'),
+                          LSGSettings,
+                          True,
+                          True)
 
     def populate_gui(self, action_name, action_icon, action_function,
                      is_menu, is_toolbar):
@@ -124,7 +119,8 @@ class GuiManager:
         toolbar if necessary"""
 
         new_action = QAction(QIcon(action_icon), action_name, self.iface.mainWindow())
-        new_action.triggered.connect(action_function)
+        # lambda: allows parameters to be passed at the time of being triggered
+        new_action.triggered.connect(lambda: action_function(self.iface))
         self.actions_list.append(new_action)
 
         # if it should go into the menu then add it
@@ -134,13 +130,3 @@ class GuiManager:
         # if it should go onto the toolbar then add it
         if is_toolbar:
             self.toolbar.addAction(new_action)
-
-
-    # TODO:9 - Abstract these below out into their own area
-    def run(self):
-        """The function for the first plugin"""
-        self.iface.messageBar().pushMessage('Hello from Plugin action 1')
-
-    def runSecondAction(self):
-        """The function for the second plugin"""
-        self.iface.messageBar().pushMessage('Hello from Plugin action 2')
