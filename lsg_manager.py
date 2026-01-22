@@ -14,7 +14,6 @@ class LSGManagerPlugin:
         # initialise the gui manager class
         self.guiManager = GuiManager(self.iface)
 
-
     def initGui(self):
         """Add the menu, toolbar and actions when the plugin is activated"""
         self.guiManager.initialiseGui()
