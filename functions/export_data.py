@@ -10,11 +10,14 @@ from qgis.core import QgsVectorLayer
 from qgis.core import QgsFeatureRequest
 from qgis.core import QgsExpression
 from qgis.PyQt.QtCore import QDate
+from qgis.utils import iface
+from qgis.core import Qgis
 
 from collections import defaultdict
 
 from ..gui.forms.Export_Dialog import ExportDialog
 from .lsg_settings import LSGSettings
+
 
 # TODO:6 - write code to export LG
 # TODO:7 - write code to export AD
@@ -27,6 +30,7 @@ class ExportData:
     """Class to manage the export data form and functionality. this class will read and write
     the layers used in the global settings. The class will also export the LG and AD files
     required for geoplace and an update only version requird for Alloy"""
+
     def __init__(self, iface):
         self.iface = iface
         # this code is in the plugin builder code, but I don't have any attributes for first_start in my code
@@ -126,7 +130,6 @@ class ExportData:
             # if Alloy update
             # check ESU layer is valid and send over to export_Alloy
 
-    # TODO:7 - write code to export AD
     # TODO:8 - write code to export updates only
     # TODO:9 - Write code to export ESU's with the additional data Alloy requires - Risk scores,
     #   HRCN, PRoW overlap - and any others that come later
@@ -137,6 +140,10 @@ class ExportData:
     # Also add functionality to select after a given date? or will it require a different way
     # off doing this? i.e. if something is updated in one table it will need to be pulled out
     # of the tables?
+    # export lg/ad could be called with the desired expressions built in, or a call to a function
+    # to define them within based on flags in the gui. this would avoid the need to rewrite them
+    # again when exporting for Alloy. keep in mind that each table has a slightly different name
+    # for the end_date field. this could be rationalised in a new table structure?
 
     def export_lg(self, esu_layer, sites_layer, file_path):
         """Export the LG data in the format set by the Goeplace DTF Specification"""
@@ -181,38 +188,22 @@ class ExportData:
             # write the row11 line to csv
             writer.writerow(header)
 
-            # order the sites table by its SITE_CODE attribute
+            # create the required expression string. this will be dependent on the type of export
+            # required e.g. geogateway/alloy and lsg/ad. could be created automatically based on parametres?
+            expression = f'"SITE_STREET_END_DATE" IS NULL'
+            # create the feature request
+            sites_request = self.create_feature_request(expression)
 
-            # Create the request object
-            sites_request = QgsFeatureRequest()
-            # create the sql expression to filter with (all live features)
-            sites_filter_expression_string = f'"SITE_STREET_END_DATE" IS NULL'
-            # add the expression to the request
-            sites_request.setFilterExpression(sites_filter_expression_string)
-            # Define the sort clause: sort by the "SITE_CODE" field
-            sites_clause = QgsFeatureRequest.OrderByClause('SITE_CODE')
-            # Create the order using the defiend clause
-            sites_orderby = QgsFeatureRequest.OrderBy([sites_clause])
-            # Add the sort clause to the request
-            sites_request.setOrderBy(sites_orderby)
-
-            # get the esu_feaures and put them into a dictionary for quick access rather
-            # than calling getFeatures() multiple times which adds a large time cost
-            # select all live ESUs from the esu_layer then order by the siteCode
-            # Create the request object and ensure no geometry is copied and only the required attributes
-            esu_request = QgsFeatureRequest() \
-                .setFlags(QgsFeatureRequest.NoGeometry) \
-                .setSubsetOfAttributes(['ESUID', 'SITE_CODE', 'Type_3', 'Type_4', 'Type_5', 'NCR'], esu_layer.fields())
-            # create the sql expression to filter with (all live features)
-            esu_filter_expression_string = f'"ESU_END_DATE" IS NULL'
-            # add the expression to the request
-            esu_request.setFilterExpression(esu_filter_expression_string)
-            # Define the sort clause: sort by the "SITE_CODE" field
-            esu_clause = QgsFeatureRequest.OrderByClause('SITE_CODE')
-            # Create the order using the defiend clause
-            esu_orderby = QgsFeatureRequest.OrderBy([esu_clause])
-            # Add the sort clause to the request
-            esu_request.setOrderBy(esu_orderby)
+            # create the required expression string. this will be dependent on the type of export
+            # required e.g. geogateway/alloy and lsg/ad. could be created automatically based on parametres?
+            expression = f'"ESU_END_DATE" IS NULL'
+            # create a list of required field names
+            field_names = ['ESUID', 'SITE_CODE', 'Type_3', 'Type_4', 'Type_5', 'NCR']
+            # create the feature request
+            esu_request = self.create_feature_request(expression, attributes=True,
+                                                      fields=field_names,
+                                                      layer=esu_layer
+                                                      )
 
             # create a list of the attributes returned by the feature request
             all_features = [feature for feature in esu_layer.getFeatures(esu_request)]
@@ -245,9 +236,7 @@ class ExportData:
                 site_code = feature['NCR']
                 esu_data[site_code].append(feature)
 
-
-
-            # write the First stage - DTF tables 11, 15, 17 - SITE_CODE level
+            # write the First stage - DTF tables 11, 15, 12 - SITE_CODE level
 
             # iterate over the sites table to obtain the data for the 11 & 15 records
             # and then find the relevant 12's in the ESU layer
@@ -306,7 +295,15 @@ class ExportData:
                 record_entry_date = site_feature["SITE_ENTRY_DATE"].toPyDate()  # yyyy-mm-dd
                 last_update_date = site_feature["SITE_LAST_UPDATE_DATE"].toPyDate()  # yyyy-mm-dd
                 street_start_date = site_feature["SITE_START_DATE"].toPyDate()  # yyyy-mm-dd
-                street_end_date = ""  # always null because we only select live dates
+                # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
+                street_end_date = self.getEndDate("SITE_STREET_END_DATE")
+
+                # try:
+                #     site_feature["SITE_STREET_END_DATE"].toPyDate()
+                # except:  # I don't know which exception this is
+                #     street_end_date = ""
+                # else:
+                #     street_end_date = site_feature["SITE_STREET_END_DATE"].toPyDate()  # yyyy-mm-dd
                 street_start_x = self.round_coords(site_feature["X1"])
                 street_start_y = self.round_coords(site_feature["Y1"])
                 street_end_x = self.round_coords(site_feature["X2"])
@@ -372,18 +369,11 @@ class ExportData:
 
             # write the Second stage - DTF tables 13, 17 & 14 - ESUID level
 
-            # select all live ESUs from the esu_layer sorted on the siteCode.
-            esu_request = QgsFeatureRequest()
-            # create the sql expression to filter with (all live features)
-            esu_filter_expression_string = f'"ESU_END_DATE" IS NULL'
-            # add the expression to the request
-            esu_request.setFilterExpression(esu_filter_expression_string)
-            # Define the sort clause: sort by the "SITE_CODE" field
-            esu_clause = QgsFeatureRequest.OrderByClause('SITE_CODE')
-            # Create the order using the defiend clause
-            esu_orderby = QgsFeatureRequest.OrderBy([esu_clause])
-            # Add the sort clause to the request
-            esu_request.setOrderBy(esu_orderby)
+            # create the required expression string. this will be dependent on the type of export
+            # required e.g. geogateway/alloy and lsg/ad. could be created automatically based on parametres?
+            expression = f'"ESU_END_DATE" IS NULL'
+            # create the feature request
+            esu_request = self.create_feature_request(expression, geom=True)
 
             # get the features from the ESU layer that match the request criteria
             esu_features = esu_layer.getFeatures(esu_request)
@@ -434,7 +424,14 @@ class ExportData:
                 esu_entry_date = esu_feature["ESU_ENTRY_DATE"].date().toPyDate()  # yyyy-mm-dd
                 esu_start_date = esu_feature["ESU_START_DATE"].date().toPyDate()  # yyyy-mm-dd
                 esu_last_update_date = esu_feature["ESU_LAST_UPDATE_DATE"].date().toPyDate()  # yyyy-mm-dd
-                esu_end_date = ""  # always null because we only select live dates
+                # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
+                esu_end_date = self.getEndDate("ESU_END_DATE")
+                # try:
+                #     site_feature["ESU_END_DATE"].toPyDate()
+                # except:  # I don't know which exception this is
+                #     esu_end_date = ""
+                # else:
+                #     esu_end_date = site_feature["ESU_END_DATE"].toPyDate()  # yyyy-mm-dd
                 esu_direction = esu_feature["ESU_DIRECTION"]
 
                 # define the row13 line
@@ -466,7 +463,14 @@ class ExportData:
                 last_update_date = esu_feature["HD_LAST_UPDATE_DATE"].date().toPyDate()  # yyy-mm-dd
                 record_end_date = ""  # always null because we only select live dates
                 hd_start_date = esu_feature["HD_START_START"].date().toPyDate()  # yyyy-mm-dd
-                hd_end_date = ""  # always null because we only select live dates
+                # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
+                hd_end_date = self.getEndDate("ESU_END_DATE")
+                # try:
+                #     esu_feature["ESU_END_DATE"].toPyDate()
+                # except:  # I don't know which exception this is
+                #     hd_end_date = ""
+                # else:
+                #     hd_end_date = esu_feature["ESU_END_DATE"].toPyDate()  # yyyy-mm-dd
                 hd_seasonal_start_date = ""
                 hd_seasonal_end_date = ""
                 hd_start_time = ""
@@ -585,6 +589,7 @@ class ExportData:
         end_time = dt.today().strftime('%H%M%S')
         time_taken = (float(end_time) - float(run_time)) / 60
         print(f"LG Time taken = {time_taken} minutes")
+        iface.messageBar().pushMessage("Success", "LG Exported successfully", level=Qgis.Info, duration=3)
 
     def export_ad(self, interest_layer, reinstatement_layer, designation_layer, file_path):
         write_path = file_path + "\\1050_ad.csv"
@@ -629,18 +634,11 @@ class ExportData:
 
             # write the interest record - DTF table 61 ##################################
 
-            # Create the request object
-            interest_request = QgsFeatureRequest()
-            # create the sql expression to filter with (all live features)
-            interest_filter_expression_string = f'"END_DATE" IS NULL'
-            # add the expression to the request
-            interest_request.setFilterExpression(interest_filter_expression_string)
-            # Define the sort clause: sort by the "SITE_CODE" field
-            interest_clause = QgsFeatureRequest.OrderByClause('SITE_CODE')
-            # Create the order using the defiend clause
-            interest_orderby = QgsFeatureRequest.OrderBy([interest_clause])
-            # Add the sort clause to the request
-            interest_request.setOrderBy(interest_orderby)
+            # create the required expression string. this will be dependent on the type of export
+            # required e.g. geogateway/alloy and lsg/ad. could be created automatically
+            expression = f'"END_DATE" IS NULL'
+            # create the feature request
+            interest_request = self.create_feature_request(expression)
 
             # initialise a grouped dictionary to contain the esu data grouped by site code
             interest_data = defaultdict(list)
@@ -670,7 +668,14 @@ class ExportData:
                     district_ref_authority = interest_feature["AUTH"]
                     record_start_date = interest_feature["START_DATE"].toPyDate()  # yyyy-mm-dd
                     last_update_date = interest_feature["LAST_UPDATE_DATE"].toPyDate()  # yyyy-mm-dd
-                    record_end_date = ""  # always blank because we only select live features
+                    # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
+                    record_end_date = self.getEndDate("END_DATE")
+                    # try:
+                    #     interest_feature["END_DATE"].toPyDate()
+                    # except:  # I don't know which exception this is
+                    #     record_end_date = ""
+                    # else:
+                    #     record_end_date = interest_feature["END_DATE"].toPyDate()  # yyyy-mm-dd
                     whole_road = int(interest_feature["WHOLE_ROAD"])
                     asd_coordinate = self.add_zero_if_value(whole_road, 0)  # asd table not implemented yet
                     asd_coordinate_count = ""  # asd coordinate table not implemented yet
@@ -714,18 +719,11 @@ class ExportData:
 
             # write the construction (reinstatement) record - DTF table 62 ################
 
-            # Create the request object
-            reinstatement_request = QgsFeatureRequest()
-            # create the sql expression to filter with (all live features)
-            reinstatement_filter_expression_string = f'"END_DATE" IS NULL'
-            # add the expression to the request
-            reinstatement_request.setFilterExpression(reinstatement_filter_expression_string)
-            # Define the sort clause: sort by the "SITE_CODE" field
-            reinstatement_clause = QgsFeatureRequest.OrderByClause('SITE_CODE')
-            # Create the order using the defiend clause
-            reinstatement_orderby = QgsFeatureRequest.OrderBy([reinstatement_clause])
-            # Add the sort clause to the request
-            reinstatement_request.setOrderBy(reinstatement_orderby)
+            # create the required expression string. this will be dependent on the type of export
+            # required e.g. geogateway/alloy and lsg/ad. could be created automatically
+            expression = f'"END_DATE" IS NULL'
+            # create the feature request
+            reinstatement_request = self.create_feature_request(expression)
 
             # initialise a grouped dictionary to contain the esu data grouped by site code
             reinstatement_data = defaultdict(list)
@@ -754,7 +752,14 @@ class ExportData:
                     usrn = reinstatement_feature["SITE_CODE"]
                     record_start_date = reinstatement_feature["START_DATE"].toPyDate()  # yyyy-mm-dd
                     last_update_date = reinstatement_feature["LAST_UPDATE_DATE"].toPyDate()  # yyyy-mm-dd
-                    record_end_date = ""  # always blank because we only select live features
+                    # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
+                    record_end_date = self.getEndDate("END_DATE")
+                    # try:
+                    #     reinstatement_feature["END_DATE"].toPyDate()
+                    # except:  # I don't know which exception this is
+                    #     record_end_date = ""
+                    # else:
+                    #     record_end_date = reinstatement_feature["END_DATE"].toPyDate()  # yyyy-mm-dd
                     construction_type = 1  # alaways 1?
                     reinstatement_type_code = reinstatement_feature["TYPE"]
                     aggregate_abbrasion_value = ""  # not implemented yet
@@ -808,18 +813,11 @@ class ExportData:
 
             # write the special designation record - DTF table 63 #######################
 
-            # Create the request object
-            designation_request = QgsFeatureRequest()
-            # create the sql expression to filter with (all live features)
-            designation_filter_expression_string = f'"END_DATE" IS NULL'
-            # add the expression to the request
-            designation_request.setFilterExpression(designation_filter_expression_string)
-            # Define the sort clause: sort by the "SITE_CODE" field
-            designation_clause = QgsFeatureRequest.OrderByClause('SITE_CODE')
-            # Create the order using the defiend clause
-            designation_orderby = QgsFeatureRequest.OrderBy([designation_clause])
-            # Add the sort clause to the request
-            designation_request.setOrderBy(designation_orderby)
+            # create the required expression string. this will be dependent on the type of export
+            # required e.g. geogateway/alloy and lsg/ad. could be created automatically
+            expression = f'"END_DATE" IS NULL'
+            # create the feature request
+            designation_request = self.create_feature_request(expression)
 
             # initialise a grouped dictionary to contain the esu data grouped by site code
             designation_data = defaultdict(list)
@@ -850,7 +848,14 @@ class ExportData:
                     whole_road = int(designation_feature["WHOLE_ROAD"])
                     record_start_date = designation_feature["START_DATE"].toPyDate()  # yyyy-mm-dd
                     last_update_date = designation_feature["LAST_UPDATE_DATE"].toPyDate()  # yyyy-mm-dd
-                    record_end_date = ""  # always blank because we only select live features
+                    # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
+                    record_end_date = self.getEndDate("END_DATE")
+                    # try:
+                    #     designation_feature["END_DATE"].toPyDate()
+                    # except:  # I don't know which exception this is
+                    #     record_end_date = ""
+                    # else:
+                    #     record_end_date = designation_feature["END_DATE"].toPyDate()  # yyyy-mm-dd
                     asd_coordinate = self.add_zero_if_value(whole_road, 0)  # asd_table not implemented yet
                     asd_coordinate_count = ""  # asd_table not implemented yet
                     special_desig_periodicty_code = designation_feature["PERIODICITY_CODE"]
@@ -1008,6 +1013,7 @@ class ExportData:
             end_time = dt.today().strftime('%H%M%S')
             time_taken = (float(end_time) - float(run_time)) / 60
             print(f"AD Time taken = {time_taken} minutes")
+            iface.messageBar().pushMessage("Success", "AD Exported successfully", level=Qgis.Info, duration=3)
 
     @staticmethod
     def remove_null_value(value):
@@ -1025,8 +1031,43 @@ class ExportData:
 
     @staticmethod
     def round_coords(coord):
-        """ if the variable is a number then round it, if not then just return the value
+        """ if the variable is a number, then round it, if not then just return the value
             this is needed because NULL values are replaced with blank strings"""
         if isinstance(coord, numbers.Number) and not isinstance(coord, bool):
             return round(coord, 2)
         return coord
+
+    @staticmethod
+    def create_feature_request(expression, sort="SITE_CODE",
+                               geom=False, attributes=False, **kwargs):
+        # Create the request object
+        request = QgsFeatureRequest()
+        # if geometry not required then remove it from the request
+        if not geom:
+            request.setFlags(QgsFeatureRequest.NoGeometry)
+        # if only a subset of the attributes are required, then set them here
+        if attributes:
+            fields = kwargs.get('fields', None)
+            layer = kwargs.get('layer', None)
+            request.setSubsetOfAttributes(fields, layer.fields())
+        # create the sql expression to filter with (all live features)
+        filter_expression_string = expression
+        # add the expression to the request
+        request.setFilterExpression(filter_expression_string)
+        # Define the sort clause: sort by the "SITE_CODE" field
+        sort_clause = QgsFeatureRequest.OrderByClause(sort)
+        # Create the order using the defiend clause
+        orderby = QgsFeatureRequest.OrderBy([sort_clause])
+        # Add the sort clause to the request
+        request.setOrderBy(orderby)
+        return request
+
+    @staticmethod
+    def getEndDate(end_date_field):
+        try:
+            site_feature[end_date_field].toPyDate()
+        except:  # I don't know which exception this is
+            street_end_date = ""
+        else:
+            street_end_date = site_feature[end_date_field].toPyDate()  # yyyy-mm-dd
+        return street_end_date
