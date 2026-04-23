@@ -1,15 +1,15 @@
 # from qgis.core import QgsApplication
 import numbers
-import os
+# import os
 import csv
-import pandas as pd
+# import pandas as pd
 from datetime import datetime as dt
-from qgis.PyQt.QtCore import pyqtSlot
+# from qgis.PyQt.QtCore import pyqtSlot
 from qgis.core import QgsSettings
-from qgis.core import QgsVectorLayer
+# from qgis.core import QgsVectorLayer
 from qgis.core import QgsFeatureRequest
-from qgis.core import QgsExpression
-from qgis.PyQt.QtCore import QDate
+# from qgis.core import QgsExpression
+# from qgis.PyQt.QtCore import QDate
 from qgis.utils import iface
 from qgis.core import Qgis
 
@@ -19,8 +19,6 @@ from ..gui.forms.Export_Dialog import ExportDialog
 from .lsg_settings import LSGSettings
 
 
-# TODO:6 - write code to export LG
-# TODO:7 - write code to export AD
 # TODO:8 - write code to export updates only
 # TODO:9 - Write code to export ESU's with the additional data Alloy requires - Risk scores,
 #   HRCN, PRoW overlap - and any others that come later
@@ -59,8 +57,16 @@ class ExportData:
         self.initialise_export_form()
 
     def initialise_export_form(self):
-        """setting/reading glabal settings and populating the export_dialog form,
-        and directing to the correct export function"""
+        """
+        Load export settings, display the dialog, and trigger the data export processes.
+
+        This function retrieves saved user preferences (like file paths and ID codes) 
+        from the global settings to prepopulate the form. If the user clicks 'OK', 
+        it saves the new inputs and launches the specific LG or AD export routines.
+
+        Returns:
+            None
+        """
         # store the value of the output filepath from global settings, returns nothing if it doesn't exist
         s_output_filepath = self.global_settings.value("lsg_manager/output_fp")
         # store the value of the UPRN string from global settings, returns nothing if it doesn't exist
@@ -146,7 +152,18 @@ class ExportData:
     # for the end_date field. this could be rationalised in a new table structure?
 
     def export_lg(self, esu_layer, sites_layer, file_path):
-        """Export the LG data in the format set by the Goeplace DTF Specification"""
+        """
+        Export LG data to a CSV file following the GeoPlace DTF Specification.
+
+        This function processes Street and ESU (Elementary Street Unit) data, 
+        grouping ESUs by their associated site codes and writing them out in 
+        a specific hierarchical format (Record Types 10, 11, 12, and 15).
+
+        Args:
+            esu_layer (QgsVectorLayer): The map layer containing ESU (line) data.
+            sites_layer (QgsVectorLayer): The map layer containing Site/Street attribute data.
+            file_path (str): The directory where the exported CSV should be saved.
+        """
 
         write_path = file_path + "\\1050_lg.csv"
         run_date = dt.today().date()  # yyyy-mm-dd
@@ -190,13 +207,13 @@ class ExportData:
 
             # create the required expression string. this will be dependent on the type of export
             # required e.g. geogateway/alloy and lsg/ad. could be created automatically based on parametres?
-            expression = f'"SITE_STREET_END_DATE" IS NULL'
+            expression = '"SITE_STREET_END_DATE" IS NULL'
             # create the feature request
             sites_request = self.create_feature_request(expression)
 
             # create the required expression string. this will be dependent on the type of export
             # required e.g. geogateway/alloy and lsg/ad. could be created automatically based on parametres?
-            expression = f'"ESU_END_DATE" IS NULL'
+            expression = '"ESU_END_DATE" IS NULL'
             # create a list of required field names
             field_names = ['ESUID', 'SITE_CODE', 'Type_3', 'Type_4', 'Type_5', 'NCR']
             # create the feature request
@@ -296,7 +313,7 @@ class ExportData:
                 last_update_date = site_feature["SITE_LAST_UPDATE_DATE"].toPyDate()  # yyyy-mm-dd
                 street_start_date = site_feature["SITE_START_DATE"].toPyDate()  # yyyy-mm-dd
                 # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
-                street_end_date = self.getEndDate("SITE_STREET_END_DATE")
+                street_end_date = self.getEndDate(site_feature["SITE_STREET_END_DATE"])
 
                 # try:
                 #     site_feature["SITE_STREET_END_DATE"].toPyDate()
@@ -371,7 +388,7 @@ class ExportData:
 
             # create the required expression string. this will be dependent on the type of export
             # required e.g. geogateway/alloy and lsg/ad. could be created automatically based on parametres?
-            expression = f'"ESU_END_DATE" IS NULL'
+            expression = '"ESU_END_DATE" IS NULL'
             # create the feature request
             esu_request = self.create_feature_request(expression, geom=True)
 
@@ -425,7 +442,7 @@ class ExportData:
                 esu_start_date = esu_feature["ESU_START_DATE"].date().toPyDate()  # yyyy-mm-dd
                 esu_last_update_date = esu_feature["ESU_LAST_UPDATE_DATE"].date().toPyDate()  # yyyy-mm-dd
                 # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
-                esu_end_date = self.getEndDate("ESU_END_DATE")
+                esu_end_date = self.getEndDate(esu_feature["ESU_END_DATE"])
                 # try:
                 #     site_feature["ESU_END_DATE"].toPyDate()
                 # except:  # I don't know which exception this is
@@ -464,7 +481,7 @@ class ExportData:
                 record_end_date = ""  # always null because we only select live dates
                 hd_start_date = esu_feature["HD_START_START"].date().toPyDate()  # yyyy-mm-dd
                 # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
-                hd_end_date = self.getEndDate("ESU_END_DATE")
+                hd_end_date = self.getEndDate(esu_feature["ESU_END_DATE"])
                 # try:
                 #     esu_feature["ESU_END_DATE"].toPyDate()
                 # except:  # I don't know which exception this is
@@ -592,6 +609,20 @@ class ExportData:
         iface.messageBar().pushMessage("Success", "LG Exported successfully", level=Qgis.Info, duration=3)
 
     def export_ad(self, interest_layer, reinstatement_layer, designation_layer, file_path):
+        """
+        Export Associated Data (AD) layers to CSV following DTF specifications.
+
+        This function processes 'Interests', 'Reinstatements', and 'Designations' 
+        associated with street records. It handles the formatting of Record Types 
+        10, 61, 62, and 63 for the final export file.
+
+        Args:
+            interest_layer (QgsVectorLayer): Layer containing street interest data.
+            reinstatement_layer (QgsVectorLayer): Layer containing reinstatement category data.
+            designation_layer (QgsVectorLayer): Layer containing street designation data.
+            file_path (str): The directory where the 1050_ad.csv file will be saved.
+        """
+
         write_path = file_path + "\\1050_ad.csv"
         run_date = dt.today().date()  # yyyy-mm-dd
         run_time = dt.today().strftime('%H%M%S')  # HHMMSS
@@ -636,7 +667,7 @@ class ExportData:
 
             # create the required expression string. this will be dependent on the type of export
             # required e.g. geogateway/alloy and lsg/ad. could be created automatically
-            expression = f'"END_DATE" IS NULL'
+            expression = '"END_DATE" IS NULL'
             # create the feature request
             interest_request = self.create_feature_request(expression)
 
@@ -669,7 +700,7 @@ class ExportData:
                     record_start_date = interest_feature["START_DATE"].toPyDate()  # yyyy-mm-dd
                     last_update_date = interest_feature["LAST_UPDATE_DATE"].toPyDate()  # yyyy-mm-dd
                     # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
-                    record_end_date = self.getEndDate("END_DATE")
+                    record_end_date = self.getEndDate(interest_feature["END_DATE"])
                     # try:
                     #     interest_feature["END_DATE"].toPyDate()
                     # except:  # I don't know which exception this is
@@ -721,7 +752,7 @@ class ExportData:
 
             # create the required expression string. this will be dependent on the type of export
             # required e.g. geogateway/alloy and lsg/ad. could be created automatically
-            expression = f'"END_DATE" IS NULL'
+            expression = '"END_DATE" IS NULL'
             # create the feature request
             reinstatement_request = self.create_feature_request(expression)
 
@@ -753,7 +784,7 @@ class ExportData:
                     record_start_date = reinstatement_feature["START_DATE"].toPyDate()  # yyyy-mm-dd
                     last_update_date = reinstatement_feature["LAST_UPDATE_DATE"].toPyDate()  # yyyy-mm-dd
                     # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
-                    record_end_date = self.getEndDate("END_DATE")
+                    record_end_date = self.getEndDate(reinstatement_feature["END_DATE"])
                     # try:
                     #     reinstatement_feature["END_DATE"].toPyDate()
                     # except:  # I don't know which exception this is
@@ -815,7 +846,7 @@ class ExportData:
 
             # create the required expression string. this will be dependent on the type of export
             # required e.g. geogateway/alloy and lsg/ad. could be created automatically
-            expression = f'"END_DATE" IS NULL'
+            expression = '"END_DATE" IS NULL'
             # create the feature request
             designation_request = self.create_feature_request(expression)
 
@@ -849,7 +880,7 @@ class ExportData:
                     record_start_date = designation_feature["START_DATE"].toPyDate()  # yyyy-mm-dd
                     last_update_date = designation_feature["LAST_UPDATE_DATE"].toPyDate()  # yyyy-mm-dd
                     # End_Date field can be NULL or hold a date. the .toPyDate() function will error if value is NULL
-                    record_end_date = self.getEndDate("END_DATE")
+                    record_end_date = self.getEndDate(designation_feature["END_DATE"])
                     # try:
                     #     designation_feature["END_DATE"].toPyDate()
                     # except:  # I don't know which exception this is
@@ -1017,57 +1048,147 @@ class ExportData:
 
     @staticmethod
     def remove_null_value(value):
-        """ removes the null value that is printed to csv and returns a blank char"""
+        """
+        Convert 'None' or 'Null' data into an empty string for CSV export.
+
+        In GIS data, empty fields often return a 'None' type. Writing 'None' 
+        directly to a CSV can break data specifications; this helper ensures 
+        those fields appear as a clean, blank space instead.
+
+        Args:
+            value: The data value to check (could be a String, Int, or None).
+
+        Returns:
+            The original value if it exists, or an empty string ("") if the value is null.
+        """
+        # --- 1. CHECK: If the value has content, send it back ---
         if value:
             return value
+            
+        # --- 2. FALLBACK: If value is None or Empty, return a blank string ---
         return ""
 
     @staticmethod
     def add_zero_if_value(value_check, value_target):
-        """ returns a zero if the value matches the target value"""
+        """
+        Check a value against a target and return a zero if they match.
+
+        This is a helper function used to ensure specific database fields 
+        meet DTF requirements by providing a '0' as a default value when 
+        certain conditions are met, rather than leaving the field empty.
+
+        Args:
+            value_check: The current data value you are inspecting.
+            value_target: The specific value that triggers the zero (e.g., a "None" or a specific code).
+
+        Returns:
+            int or str: Returns 0 if a match is found, otherwise returns an empty string ("").
+        """
+        # --- 1. COMPARISON: Check if the input matches our specific target ---
         if value_check == value_target:
             return 0
+        
+        # --- 2. DEFAULT: Return a blank string if no match is found ---
         return ""
 
     @staticmethod
     def round_coords(coord):
-        """ if the variable is a number, then round it, if not then just return the value
-            this is needed because NULL values are replaced with blank strings"""
+        """
+        Round coordinate values to two decimal places for spatial accuracy.
+
+        This helper ensures that X/Y coordinates meet the DTF specification 
+        formatting. It safely ignores non-numeric data (like empty strings 
+        or NULLs) to prevent the code from crashing during the export process.
+
+        Args:
+            coord: The coordinate value to be processed (expected Float or Int).
+
+        Returns:
+            The coordinate rounded to 2 decimal places if it's a number, 
+            otherwise returns the original value.
+        """
+
+        # --- 1. TYPE CHECK: Verify if the input is a valid number ---
+        # We exclude Booleans because Python treats True/False as 1/0
         if isinstance(coord, numbers.Number) and not isinstance(coord, bool):
+            # --- 2. FORMAT: Round to 2 decimal places (e.g., 123.456 -> 123.46) ---
             return round(coord, 2)
+            
+        # --- 3. FALLBACK: Return original value if it's a string/NULL ---
         return coord
 
     @staticmethod
     def create_feature_request(expression, sort="SITE_CODE",
                                geom=False, attributes=False, **kwargs):
-        # Create the request object
+        """
+        Build a customized QgsFeatureRequest to filter and sort map data.
+
+        Instead of downloading every piece of data from a layer (which is slow), 
+        this function creates a 'request' that only asks for exactly what we 
+        need—specific rows, specific columns, or no geometry.
+
+        Args:
+            expression (str): The SQL-style filter (e.g., '"STATUS" = 1').
+            sort (str): The field name to sort by. Defaults to "SITE_CODE".
+            geom (bool): If False, ignores spatial data to speed up the request.
+            attributes (bool): If True, only fetches the columns listed in 'fields'.
+            **kwargs: Expects 'fields' (list) and 'layer' (QgsVectorLayer) if attributes is True.
+
+        Returns:
+            QgsFeatureRequest: The configured request object ready for getFeatures().
+        """
+
+        # --- 1. INITIALISE: Create the empty request object ---
         request = QgsFeatureRequest()
-        # if geometry not required then remove it from the request
+
+        # --- 2. GEOMETRY: Speed up processing if we only need text/table data ---
         if not geom:
             request.setFlags(QgsFeatureRequest.NoGeometry)
-        # if only a subset of the attributes are required, then set them here
+
+        # --- 3. ATTRIBUTES: Limit the 'columns' returned to save memory ---
         if attributes:
             fields = kwargs.get('fields', None)
             layer = kwargs.get('layer', None)
+            # This tells QGIS: "Only look at these specific fields in this layer"
             request.setSubsetOfAttributes(fields, layer.fields())
-        # create the sql expression to filter with (all live features)
-        filter_expression_string = expression
-        # add the expression to the request
-        request.setFilterExpression(filter_expression_string)
-        # Define the sort clause: sort by the "SITE_CODE" field
+
+        # --- 4. FILTER: Apply the SQL-style expression ---
+        # Only features matching this string (e.g., 'Date is NULL') will be returned
+        request.setFilterExpression(expression)
+
+        # --- 5. SORTING: Define how the results should be ordered ---
         sort_clause = QgsFeatureRequest.OrderByClause(sort)
-        # Create the order using the defiend clause
         orderby = QgsFeatureRequest.OrderBy([sort_clause])
-        # Add the sort clause to the request
         request.setOrderBy(orderby)
+
         return request
 
     @staticmethod
     def getEndDate(end_date_field):
+        """
+        Safely convert a QGIS date field to a Python date or a blank string.
+
+        In QGIS, 'NULL' dates cause errors when you try to convert them 
+        to Python dates. This function acts as a safety wrapper: if a 
+        date exists, it formats it; if it's NULL, it returns an empty 
+        string instead of crashing the export.
+
+        Args:
+            end_date_field: The raw value from the QGIS attribute table.
+
+        Returns:
+            str: A formatted date (yyyy-mm-dd) or an empty string for NULL values.
+        """
+
+        # --- 1. ATTEMPT: Try to convert the field to a standard Python date ---
         try:
-            site_feature[end_date_field].toPyDate()
-        except:  # I don't know which exception this is
+            # .toPyDate() is the standard QGIS method for date conversion
+            street_end_date = end_date_field.toPyDate()
+            
+        # --- 2. CATCH: Handle cases where the field is NULL or invalid ---
+        except:  
+            # If conversion fails (common with NULLs), we default to a blank string
             street_end_date = ""
-        else:
-            street_end_date = site_feature[end_date_field].toPyDate()  # yyyy-mm-dd
+            
+        # --- 3. RETURN: Pass back the safe value for the CSV writer ---
         return street_end_date

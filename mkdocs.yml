@@ -1,0 +1,16 @@
+site_name: LSG Manager Documentation
+theme:
+  name: material
+
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          setup_commands:
+            - import sys
+            - sys.path.append(".")
+          import_timeout: 60
+
+nav:
+  - Home: index.md
+  - Code Reference: reference.md

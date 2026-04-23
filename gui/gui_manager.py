@@ -1,12 +1,16 @@
-from qgis.PyQt.QtWidgets import QMenu, QAction, QToolBar
+from qgis.PyQt.QtWidgets import QMenu, QAction, QToolBar, QDockWidget, QWidget, QVBoxLayout, QLabel
 from qgis.PyQt.QtGui import QIcon
 from qgis.core import QgsApplication
-from qgis.PyQt.QtCore import pyqtSlot
+from qgis.PyQt.QtCore import pyqtSlot, Qt
+from qgis.gui import QgsDockWidget
 import os
 from qgis.core import QgsSettings  # only here while testing settings functions
 from ..functions.export_data import ExportData
 from ..functions.lsg_settings import LSGSettings
+from ..functions.new_site import NewSite
+from ..functions.align_section import AlignSection
 from . forms.Export_Dialog import ExportDialog
+# from . forms.New_Site_Panel import NewSitePanel
 
 
 class GuiManager:
@@ -18,6 +22,7 @@ class GuiManager:
         self.menu_title = "LS&G Manager"  # Title for the top-level menu
         self.toolbar_title = "LSG Toolbar"  # Title for the toolbar
         self.icon_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "icons")
+        self.panels = []  #  List to keep track of multiple panels for easy cleanup
         # initialise all the forms
         # self.export_dialog = ExportDialog()
 
@@ -50,6 +55,10 @@ class GuiManager:
 
         # Add the toolbar to the QGIS interface
         self.iface.addToolBar(self.toolbar)
+
+        # add any panels to the UI
+        self.prepare_panels()
+
 
     # called from unload() to remove the elements of the gui
     def unloadGui(self):
@@ -89,9 +98,19 @@ class GuiManager:
                 action.deleteLater()
         self.actions_list = []
 
+        # Clean up each panel to prevent memory leaks or ghost UI elements
+        for panel in self.panels:
+            # Remove from the main window interface
+            self.iface.mainWindow().removeDockWidget(panel)
+            # Schedule for deletion from memory
+            panel.deleteLater()
+
+        # Clear the list reference
+        self.panels.clear()
+
     def prepare_gui(self):
         """function that holds all the information on the actions and calls their creation
-         and addition to the menu and tollbar"""
+         and addition to the menu and toolbar"""
         # action_name - string for the name of the action
         # action_icon - name of the icon to be used. will be joined to the filepath for icons folder
         # action_function - name of the function to be triggered
@@ -112,6 +131,12 @@ class GuiManager:
                           LSGSettings,
                           True,
                           True)
+        
+        self.populate_gui("Align Section",
+                          os.path.join(self.icon_path, 'question.svg'),
+                          AlignSection,
+                          False,
+                          True)
 
     def populate_gui(self, action_name, action_icon, action_function,
                      is_menu, is_toolbar):
@@ -130,3 +155,12 @@ class GuiManager:
         # if it should go onto the toolbar then add it
         if is_toolbar:
             self.toolbar.addAction(new_action)
+
+    def prepare_panels(self):
+        """Calls the code to display and mange the panels. Add all applicable calls in this section"""
+
+        # load the new site panel - save as a variable else the garbage manager removes the connection
+        self.new_site_instance = NewSite(self.iface, self.panels)
+        
+        
+        
