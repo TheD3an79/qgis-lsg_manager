@@ -1,47 +1,59 @@
-from qgis.PyQt.QtWidgets import QMenu, QAction, QToolBar, QDockWidget, QWidget, QVBoxLayout, QLabel
+from qgis.PyQt.QtWidgets import QMenu, QAction, QToolBar
 from qgis.PyQt.QtGui import QIcon
-from qgis.core import QgsApplication
-from qgis.PyQt.QtCore import pyqtSlot, Qt
-from qgis.gui import QgsDockWidget
 import os
-from qgis.core import QgsSettings  # only here while testing settings functions
+
 from ..functions.export_data import ExportData
 from ..functions.lsg_settings import LSGSettings
 from ..functions.new_site import NewSite
 from ..functions.align_section import AlignSection
-from . forms.Export_Dialog import ExportDialog
-# from . forms.New_Site_Panel import NewSitePanel
+
 
 
 class GuiManager:
+    """Manages the lifecycle and visibility of the LS&G Plugin's graphical interface.
+
+    This class handles the creation, placement, and removal of custom menus, 
+    toolbars, and dockable panels within the QGIS main window.
+
+    Attributes:
+        iface: Reference to the QGIS Interface (QgIface).
+        menu: The top-level QMenu object in the QGIS menu bar.
+        actions_list: A collection of QAction objects to prevent garbage collection.
+        toolbar: The QToolBar object containing shortcut icons.
+        panels: A list of active dock widgets to track for cleanup.
+    """
     def __init__(self, iface):
+        """Initialises the manager with QGIS interface references."""
         self.iface = iface
         self.menu = None
         self.actions_list: list[QAction] = []
         self.toolbar = None
-        self.menu_title = "LS&G Manager"  # Title for the top-level menu
-        self.toolbar_title = "LSG Toolbar"  # Title for the toolbar
+        self.menu_title = "LS&G Manager"
+        self.toolbar_title = "LSG Toolbar"
+        
+        # Build paths relative to this file so icons load regardless of install directory
         self.icon_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "icons")
-        self.panels = []  #  List to keep track of multiple panels for easy cleanup
-        # initialise all the forms
-        # self.export_dialog = ExportDialog()
+        self.panels = [] 
 
     # called in initgui to initialise the elements of the gui
     def initialiseGui(self):
-        """Create the custom top-level menu, toolbar and actions"""
+        """Builds and displays the menu, toolbar, and panels in QGIS.
 
-        # Create the custom QMenu object
+        This is typically called by the main plugin's initGui() method.
+        """
+
+         # 1. Create the containers
         self.menu = QMenu(self.menu_title, self.iface.mainWindow())
-        # Create the custom toolbar
         self.toolbar = QToolBar(self.toolbar_title)
 
-        # run functon to create actions and add to menu and toolbar
+        # 2. Define what goes inside them (Actions)
         self.prepare_gui()
 
-        # Add the menu to the main QGIS menu bar
+        # 3. Inject the menu into the QGIS Menu Bar
         menu_bar = self.iface.mainWindow().menuBar()
-        # Find the 'Help' menu action to insert our menu before it
-        # If 'Help' isn't found, it might append to the end
+        
+        # We try to find the 'Help' menu so our plugin appears in a logical 
+        # position (usually at the end, but before Help).
         help_action = None
         for action in menu_bar.actions():
             if action.text() == "&Help":
@@ -53,60 +65,53 @@ class GuiManager:
         else:
             menu_bar.addMenu(self.menu)
 
-        # Add the toolbar to the QGIS interface
+        # 4. Add the toolbar and panels to the UI
         self.iface.addToolBar(self.toolbar)
-
-        # add any panels to the UI
         self.prepare_panels()
 
 
     # called from unload() to remove the elements of the gui
     def unloadGui(self):
-        """Remove the menu and actions when the plugin is deactivated"""
+        """Safely removes all UI elements and clears memory.
 
-        # Remove the actions from the menu
+        This must be called when the plugin is disabled or uninstalled 
+        to prevent 'ghost' buttons or menu items remaining in QGIS.
+        """
+
+        # Remove actions from the menu first
         if self.menu:
-            # Get a copy of all actions currently in the menu
             actions_to_remove = list(self.menu.actions())
-            # Iterate through the actions and remove/delete them
             for action in actions_to_remove:
-                # Remove the action from the menu itself
                 self.menu.removeAction(action)
 
-        # Remove the menu from the main menu bar
+        # Remove the menu from the QGIS Bar
         if self.menu:
             menu_bar = self.iface.mainWindow().menuBar()
             menu_bar.removeAction(self.menu.menuAction())
+            # deleteLater() is safer than 'del'; it waits for the event loop to finish
             self.menu.deleteLater()
             self.menu = None
 
-        # Remove the toolbar and its contents
+        # Clean up the Toolbar
         if self.toolbar:
-            # Get all actions from the toolbar
-            all_actions = self.toolbar.actions()
-            # Iterate over the actions and remove them from the toolbar
-            for action in all_actions:
+            for action in self.toolbar.actions():
                 self.toolbar.removeAction(action)
-            # Removes the toolbar from the window
             self.iface.mainWindow().removeToolBar(self.toolbar)
-            self.toolbar.deleteLater()  # Ensures proper destruction
+            self.toolbar.deleteLater()
             self.toolbar = None
 
-        # Delete the actions themselves, once they are removed from all UI elements
+        # Explicitly delete actions to free up memory
         for action in self.actions_list:
             if action:
                 action.deleteLater()
         self.actions_list = []
 
-        # Clean up each panel to prevent memory leaks or ghost UI elements
+        # Remove any active dock panels (like the New Site panel)
         for panel in self.panels:
-            # Remove from the main window interface
             self.iface.mainWindow().removeDockWidget(panel)
-            # Schedule for deletion from memory
             panel.deleteLater()
-
-        # Clear the list reference
         self.panels.clear()
+
 
     def prepare_gui(self):
         """function that holds all the information on the actions and calls their creation
@@ -120,17 +125,17 @@ class GuiManager:
         # add functionality to export the data in CSV format for GeoGateway or Alloy
         # rules for this are set in the DTF document provided by Geoplace
         self.populate_gui("Export Data",
-                     os.path.join(self.icon_path, 'question.svg'),
+                     None,  # No icon needed, menu item only
                      ExportData,
                      True,
-                     True)
+                     False)
 
         # allows for configuring, and saving, the map layers used in the plugin
         self.populate_gui("Layer settings",
-                          os.path.join(self.icon_path, 'question.svg'),
+                          None,  # No icon needed, menu item only
                           LSGSettings,
                           True,
-                          True)
+                          False)
         
         self.populate_gui("Align Section",
                           os.path.join(self.icon_path, 'question.svg'),
@@ -140,26 +145,37 @@ class GuiManager:
 
     def populate_gui(self, action_name, action_icon, action_function,
                      is_menu, is_toolbar):
-        """Creates and action and adds to the actions list along with menu and
-        toolbar if necessary"""
+        """Helper to create a QAction and bind it to a UI element.
+
+        Args:
+            action_name: The text label for the button/menu item.
+            action_icon: Full system path to the icon file.
+            action_function: The class/function to initialize when clicked.
+            is_menu: If True, adds the action to the dropdown menu.
+            is_toolbar: If True, adds the action to the icon toolbar.
+        """
 
         new_action = QAction(QIcon(action_icon), action_name, self.iface.mainWindow())
-        # lambda: allows parameters to be passed at the time of being triggered
+        
+        # We use a 'lambda' here because we need to pass 'self.iface' to the function
+        # only when the button is actually clicked, not when the code is being read.
         new_action.triggered.connect(lambda: action_function(self.iface))
+        
+        # Keeping a reference in actions_list is VITAL. 
+        # Without it, Python's memory management deletes the action instantly.
         self.actions_list.append(new_action)
 
-        # if it should go into the menu then add it
         if is_menu:
             self.menu.addAction(new_action)
 
-        # if it should go onto the toolbar then add it
         if is_toolbar:
             self.toolbar.addAction(new_action)
 
     def prepare_panels(self):
-        """Calls the code to display and mange the panels. Add all applicable calls in this section"""
+        """Initialises and displays persistent side-panels (Dock Widgets)."""
 
-        # load the new site panel - save as a variable else the garbage manager removes the connection
+        # We store the instance as a class attribute (self.new_site_instance)
+        # to ensure it stays 'alive' while the user is interacting with it.
         self.new_site_instance = NewSite(self.iface, self.panels)
         
         

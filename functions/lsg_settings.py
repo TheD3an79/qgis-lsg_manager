@@ -6,22 +6,32 @@ from ..gui.forms.lsg_settings_dialog import SettingsDialog
 
 
 class LSGSettings:
-    def __init__(self, iface):
-        self.iface = iface
-        # this code is in the plugin builder code, but I don't have any attributes for first_start in my code
-        # brought the dialog initiation out of the if statement
-        # Create the dialog with elements (after translation) and keep reference
-        # Only create GUI ONCE in callback, so that it will only load when the plugin is started
-        # if self.first_start == True:
-        #     self.first_start = False
-        self.settings_dialog = SettingsDialog()
+    """Manages plugin configuration and persistent user settings.
 
-        # show the dialog
+    This class handles the retrieval and storage of preferred map layers 
+    (ESU, Road Links, etc.) using QGIS's global settings registry, ensuring 
+    the plugin remembers user selections across different sessions.
+
+    Attributes:
+        iface: Reference to the QGIS Interface.
+        settings_dialog: The UI form for user interaction.
+        global_settings: QgsSettings object for local hard-drive storage.
+    """
+
+
+    def __init__(self, iface):
+        """Initialises the settings manager and displays the configuration form."""
+        self.iface = iface
+        # Initialise the GUI form. We create it here so it only loads 
+        # when the user specifically requests settings.
+        self.settings_dialog = SettingsDialog()
         self.settings_dialog.show()
-        # initialise the global settings * these are unique for each user and saved on their hard drive
+
+        # QgsSettings saves data to the user's registry (Windows) or .conf file (Linux/Mac).
+        # This is how we make the plugin 'remember' things after QGIS is closed.
         self.global_settings = QgsSettings()
 
-        # initialise the form variables for assignment later
+        # Placeholders for the actual QgsMapLayer objects
         self.mlc_esu = None
         self.mlc_road_link = None
         self.mlc_sites = None
@@ -29,12 +39,18 @@ class LSGSettings:
         self.mlc_interests = None
         self.mlc_designations = None
 
-        # initialise the data in the form and await instruction
+        # Load existing saved data into the form immediately
         self.initialise_settings_form()
 
+
     def initialise_settings_form(self):
-        """setting/reading glabal settings and populating the settings form"""
-        # retrieves the map layers from the global settings if a value is stored
+        """Retrieves saved layer IDs and populates the dialog's combo boxes.
+
+        This method acts as the 'bridge' between the stored strings on the 
+        hard drive and the actual layer objects inside the current QGIS project.
+        """
+
+        # 1. Fetch layers from the registry using our helper function
         lyr_esu = self.retrieve_layer("lyr_esu")
         lyr_road_link = self.retrieve_layer("lyr_road_link")
         lyr_sites = self.retrieve_layer("lyr_sites")
@@ -42,7 +58,7 @@ class LSGSettings:
         lyr_interests = self.retrieve_layer("lyr_interests")
         lyr_designation = self.retrieve_layer("lyr_designation")
 
-        # use layer found from global settings to populate the map layer combo boxes
+        # 2. Update the UI widgets (mlc stands for MapLayerComboBox)
         self.settings_dialog.mlc_esu.setLayer(lyr_esu)
         self.settings_dialog.mlc_road_link.setLayer(lyr_road_link)
         self.settings_dialog.mlc_sites.setLayer(lyr_sites)
@@ -50,11 +66,12 @@ class LSGSettings:
         self.settings_dialog.mlc_interests.setLayer(lyr_interests)
         self.settings_dialog.mlc_designations.setLayer(lyr_designation)
 
-        # Run the dialog event loop
+        # 3. Open the dialog as a 'Modal' window (exec_ blocks code until closed)
+        # result is True if the user clicks 'OK/Save', False if 'Cancel'
         result = self.settings_dialog.exec_()
-        # See if Save was pressed
+
         if result:
-            # set the internal values for the layers from the checkboxes
+            # Extract the layers currently selected in the UI
             self.mlc_esu = self.settings_dialog.mlc_esu.currentLayer()
             self.mlc_road_link = self.settings_dialog.mlc_road_link.currentLayer()
             self.mlc_sites = self.settings_dialog.mlc_sites.currentLayer()
@@ -62,7 +79,7 @@ class LSGSettings:
             self.mlc_interests = self.settings_dialog.mlc_interests.currentLayer()
             self.mlc_designations = self.settings_dialog.mlc_designations.currentLayer()
 
-            # Save values from output, UPRN and Auth code to global settings
+            # Persist these selections to the hard drive for next time
             self.save_layer_id(self.mlc_esu, "lyr_esu")
             self.save_layer_id(self.mlc_road_link, "lyr_road_link")
             self.save_layer_id(self.mlc_sites, "lyr_sites")
@@ -70,22 +87,42 @@ class LSGSettings:
             self.save_layer_id(self.mlc_interests, "lyr_interests")
             self.save_layer_id(self.mlc_designations, "lyr_designation")
 
-    def save_layer_id(self, map_layer, variable_name):
-        """Saves the ID of the selected layer in the checkbox to global settings"""
 
+    def save_layer_id(self, map_layer, variable_name):
+        """Saves a layer's unique ID to the QGIS global settings.
+
+        Args:
+            map_layer: The QgsMapLayer object to save.
+            variable_name: The key name used to store the ID in settings.
+        """
+
+        # We prefix with 'lsg_manager/' to avoid clashing with other plugins
         variable_string = "lsg_manager/" + variable_name
 
         if map_layer:
+            # We save the .id() (a unique string) rather than the object itself
             layer_id = map_layer.id()
             self.global_settings.setValue(variable_string, layer_id)
 
-    def retrieve_layer(self, variable_name):
-        """Returns the layer from the ID in the global settings by using the variable_name"""
 
+    @staticmethod
+    def retrieve_layer(variable_name):
+        """Finds a layer in the current project using a stored ID.
+
+        Args:
+            variable_name: The key name used to look up the ID in settings.
+
+        Returns:
+            QgsMapLayer: The matching layer object if found, otherwise None.
+        """
+
+        settings = QgsSettings()
         variable_string = "lsg_manager/" + variable_name
-        saved_layer_id = self.global_settings.value(variable_string)
+        # Get the ID string
+        saved_layer_id = settings.value(variable_string)
 
         if saved_layer_id:
+            # Look up the ID in the currently open QGIS project
             layer = QgsProject.instance().mapLayers().get(saved_layer_id)
-            if layer:
-                return layer
+            return layer
+        return None

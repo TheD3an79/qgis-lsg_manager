@@ -112,8 +112,8 @@ class ExportData:
             # think of way to ensure that update works into workflow withput too much hassle
             # if LG update
             if self.b_lg_checked:
-                layer_esu = LSGSettings.retrieve_layer(self, "lyr_esu")
-                layer_sites = LSGSettings.retrieve_layer(self, "lyr_sites")
+                layer_esu = LSGSettings.retrieve_layer("lyr_esu")
+                layer_sites = LSGSettings.retrieve_layer("lyr_sites")
                 # check ESU and Sites layers are valid and send over to export_lg
                 if layer_esu.isValid() & layer_sites.isValid():
                     # print("Layers valid")
@@ -123,9 +123,9 @@ class ExportData:
 
             # if AD update
             if self.b_ad_checked:
-                layer_interest = LSGSettings.retrieve_layer(self, "lyr_interests")
-                layer_reinstatement = LSGSettings.retrieve_layer(self, "lyr_reinstatements")
-                layer_designation = LSGSettings.retrieve_layer(self, "lyr_designation")
+                layer_interest = LSGSettings.retrieve_layer("lyr_interests")
+                layer_reinstatement = LSGSettings.retrieve_layer("lyr_reinstatements")
+                layer_designation = LSGSettings.retrieve_layer("lyr_designation")
                 # check Reinstatement, Interests and Designations layers are valid and send over to export_ad
                 if layer_interest.isValid() & layer_reinstatement.isValid() & layer_designation.isValid():
                     # print("Layers valid")
