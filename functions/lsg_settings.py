@@ -34,10 +34,11 @@ class LSGSettings:
         # Placeholders for the actual QgsMapLayer objects
         self.mlc_esu = None
         self.mlc_road_link = None
-        self.mlc_sites = None
-        self.mlc_reinstatements = None
-        self.mlc_interests = None
-        self.mlc_designations = None
+        self.mlc_maintenance_area = None
+        # self.mlc_sites = None
+        # self.mlc_reinstatements = None
+        # self.mlc_interests = None
+        # self.mlc_designations = None
 
         # Load existing saved data into the form immediately
         self.initialise_settings_form()
@@ -53,18 +54,20 @@ class LSGSettings:
         # 1. Fetch layers from the registry using our helper function
         lyr_esu = self.retrieve_layer("lyr_esu")
         lyr_road_link = self.retrieve_layer("lyr_road_link")
-        lyr_sites = self.retrieve_layer("lyr_sites")
-        lyr_reinstatements = self.retrieve_layer("lyr_reinstatements")
-        lyr_interests = self.retrieve_layer("lyr_interests")
-        lyr_designation = self.retrieve_layer("lyr_designation")
+        lyr_maintenance = self.retrieve_layer("lyr_maintenance")
+        # lyr_sites = self.retrieve_layer("lyr_sites")
+        # lyr_reinstatements = self.retrieve_layer("lyr_reinstatements")
+        # lyr_interests = self.retrieve_layer("lyr_interests")
+        # lyr_designation = self.retrieve_layer("lyr_designation")
 
         # 2. Update the UI widgets (mlc stands for MapLayerComboBox)
         self.settings_dialog.mlc_esu.setLayer(lyr_esu)
         self.settings_dialog.mlc_road_link.setLayer(lyr_road_link)
-        self.settings_dialog.mlc_sites.setLayer(lyr_sites)
-        self.settings_dialog.mlc_reinstatements.setLayer(lyr_reinstatements)
-        self.settings_dialog.mlc_interests.setLayer(lyr_interests)
-        self.settings_dialog.mlc_designations.setLayer(lyr_designation)
+        self.settings_dialog.mlc_maintenance_area.setLayer(lyr_maintenance)
+        # self.settings_dialog.mlc_sites.setLayer(lyr_sites)
+        # self.settings_dialog.mlc_reinstatements.setLayer(lyr_reinstatements)
+        # self.settings_dialog.mlc_interests.setLayer(lyr_interests)
+        # self.settings_dialog.mlc_designations.setLayer(lyr_designation)
 
         # 3. Open the dialog as a 'Modal' window (exec_ blocks code until closed)
         # result is True if the user clicks 'OK/Save', False if 'Cancel'
@@ -74,18 +77,21 @@ class LSGSettings:
             # Extract the layers currently selected in the UI
             self.mlc_esu = self.settings_dialog.mlc_esu.currentLayer()
             self.mlc_road_link = self.settings_dialog.mlc_road_link.currentLayer()
-            self.mlc_sites = self.settings_dialog.mlc_sites.currentLayer()
-            self.mlc_reinstatements = self.settings_dialog.mlc_reinstatements.currentLayer()
-            self.mlc_interests = self.settings_dialog.mlc_interests.currentLayer()
-            self.mlc_designations = self.settings_dialog.mlc_designations.currentLayer()
+            self.mlc_maintenance_area = self.settings_dialog.mlc_maintenance_area.currentLayer()
+
+            # self.mlc_sites = self.settings_dialog.mlc_sites.currentLayer()
+            # self.mlc_reinstatements = self.settings_dialog.mlc_reinstatements.currentLayer()
+            # self.mlc_interests = self.settings_dialog.mlc_interests.currentLayer()
+            # self.mlc_designations = self.settings_dialog.mlc_designations.currentLayer()
 
             # Persist these selections to the hard drive for next time
             self.save_layer_id(self.mlc_esu, "lyr_esu")
             self.save_layer_id(self.mlc_road_link, "lyr_road_link")
-            self.save_layer_id(self.mlc_sites, "lyr_sites")
-            self.save_layer_id(self.mlc_reinstatements, "lyr_reinstatements")
-            self.save_layer_id(self.mlc_interests, "lyr_interests")
-            self.save_layer_id(self.mlc_designations, "lyr_designation")
+            self.save_layer_id(self.mlc_maintenance_area, "lyr_maintenance")
+            # self.save_layer_id(self.mlc_sites, "lyr_sites")
+            # self.save_layer_id(self.mlc_reinstatements, "lyr_reinstatements")
+            # self.save_layer_id(self.mlc_interests, "lyr_interests")
+            # self.save_layer_id(self.mlc_designations, "lyr_designation")
 
 
     def save_layer_id(self, map_layer, variable_name):
@@ -126,3 +132,38 @@ class LSGSettings:
             layer = QgsProject.instance().mapLayers().get(saved_layer_id)
             return layer
         return None
+
+
+############## change the code so that it only looks for the LSG
+############## geopackage and have the sites, reinstatements etc.
+############## hardcoded in. 
+
+# code for reading the layers in a geopackage into a list
+
+    @staticmethod
+    def retrieve_geopackage_layers():
+        """Finds all layers loaded within the geopackage the the ESU_Layer is referenced
+        to in the global settings"""
+
+        settings = QgsSettings()
+        variable_string = "lsg_manager/" + "lyr_esu"
+        # Get the ID string
+        lsg_esu_layer_id = settings.value(variable_string)
+
+        if lsg_esu_layer_id:
+            # Look up the ID in the currently open QGIS project
+            esu_layer = QgsProject.instance().mapLayers().get(lsg_esu_layer_id)
+            
+
+        if esu_layer and esu_layer.providerType() == 'ogr':
+            # Extract the source path of the GeoPackage
+            esu_source = esu_layer.source().split("|||")[0].split("|layername")[0]
+            
+            # Find all layers sharing this source path
+            matching_layers = [
+                layer for layer in QgsProject.instance().mapLayers().values()
+                if layer.providerType() == 'ogr' and layer.source().startswith(esu_source)
+            ]
+
+        return matching_layers
+

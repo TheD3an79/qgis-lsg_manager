@@ -80,6 +80,7 @@ class NewSite:
         self.flt_y1 = None
         self.flt_x2 = None
         self.flt_y2 = None
+        self.esuid = None
 
         # --- 3. Create instances for the required map layers ---
         # These create containers for the map layers to be populated at run time and used as required
@@ -88,8 +89,7 @@ class NewSite:
         self.layer_interests = None
         self.layer_reinstatement = None
 
-        # Get the current system time to use as the 'Entry Date' for all records
-        self.current_datetime = QtCoreDateTime.currentDateTime()
+        
 
         # --- 4. THE ACTION ---
         # When the 'Create' button is clicked, run the 'create_new_site' function
@@ -113,6 +113,8 @@ class NewSite:
         Returns:
             None: This function handles its own errors via popups.
         """
+        # Get the current system time to use as the 'Entry Date' for all records
+        self.current_datetime = QtCoreDateTime.currentDateTime()
 
         # STEP 1: Verify the user has filled out all mandatory form fields
         if self.check_form_values():
@@ -142,9 +144,11 @@ class NewSite:
                                 if self.populate_reinstatement_table():
                                     
                                     if self.populate_interest_table():
+
+                                        if self.populate_remaining_data_tables():
                                         
-                                        # FINAL STEP: Success!
-                                        self.show_completion_message()
+                                            # FINAL STEP: Success!
+                                            self.show_completion_message()
 
 
     def show_completion_message(self):
@@ -334,8 +338,10 @@ class NewSite:
 
         # --- 3. ATTRIBUTES: Fill in the table columns ---
         
+        # populate the ESUID variable
+        self.esuid = self.create_esuid(start_point, end_point)
         # These fields are generic to all new sites so should be the same for PROW, LFP etc.
-        feat.setAttribute('ESUID', self.create_esuid(start_point, end_point))
+        feat.setAttribute('ESUID', self.esuid)
         feat.setAttribute('ESU_ENTRY_DATE', self.current_datetime)
         feat.setAttribute('ESU_LAST_UPDATE_DATE', self.current_datetime)
         feat.setAttribute('ESU_START_DATE', self.dt_start_date)
@@ -652,12 +658,72 @@ class NewSite:
             )
             return False
         
+        # potential for refactor - call to assign lsg layers could be done elsewhere, this would allow the function to be used when assigning the rmeaining data layer
     def retrieve_map_references(self):
         """
-        Calls the LSGSettings class and retrieves reference to the relevant map layers
+        Calls the LSGSettings class and retrieves a list of all the loaded geopackage layers, the layers are then assigned
         """
-        # These grab the specific GIS layers needed for the database updates
-        self.layer_esu = LSGSettings.retrieve_layer(self, "lyr_esu")
-        self.layer_sites = LSGSettings.retrieve_layer(self, "lyr_sites")
-        self.layer_interests = LSGSettings.retrieve_layer(self, "lyr_interests")
-        self.layer_reinstatement = LSGSettings.retrieve_layer(self, "lyr_reinstatements")
+
+        # get a list of all of the loaded LSG geopackage layers
+        lsg_geopackage_layers = LSGSettings.retrieve_geopackage_layers()
+
+        # assign the layer from the list of geopackage layers
+        self.layer_esu = next((layer for layer in lsg_geopackage_layers if layer.name().endswith("LSG")), None)
+        self.layer_sites = next((layer for layer in lsg_geopackage_layers if layer.name().endswith("Sites")), None)
+        self.layer_interests = next((layer for layer in lsg_geopackage_layers if layer.name().endswith("Interests")), None)
+        self.layer_reinstatement = next((layer for layer in lsg_geopackage_layers if layer.name().endswith("Reinstatements")), None)
+
+        # potential refacter - call to retrieve_geopackage layers could be completed in self.retrieve_map_references
+    def populate_remaining_data_tables(self) -> bool:
+        """
+        adds the entry to each of the related data layer tables contained in the LSG geopackage.
+        These tables all have a default base structure that can be automatically populated
+        and the specific layer information can be added at a later date upon adoption.
+
+        Returns:
+            bool: True if the record was successfully saved, False otherwise.
+        """
+
+        # create a list of all data layer tables that are not LSG tables
+        # 1. retrieve the layer references from the geopackage
+        lsg_geopackage_layers = LSGSettings.retrieve_geopackage_layers()
+
+        # 2. Define the suffixes you want to exclude
+        excluded_suffixes = ("LSG", "Sites", "Interests", "Reinstatements", "Designations")
+
+        # 3. Filter out any layer whose name ends with any of those suffixes
+        remaining_layers = [
+            layer for layer in lsg_geopackage_layers 
+            if not layer.name().endswith(excluded_suffixes)
+        ]
+
+        # loop through each layer in the list and populate the default fields
+        for layer in remaining_layers:
+            # --- 1. INITIALISE: Prepare a new blank row ---
+            # Create a new blank feature mapped to the layer's field structure
+            feat = QgsFeature(layer.fields())
+
+            # --- 2. ATTRIBUTES: Populate fields ---
+            feat.setAttribute('ESUID', self.esuid)
+            feat.setAttribute('Insert_Date', self.current_datetime)
+            feat.setAttribute('Last_Updated', self.current_datetime)
+            feat.setAttribute('Whole_Road', True)
+            feat.setAttribute('To_Check', False)
+
+            # --- 3. ADD FEATURE: Start session but do NOT commit ---
+            if not layer.isEditable():
+                layer.startEditing()
+            
+            if not layer.addFeature(feat):
+
+                # If this final step fails, previous tables (LSG, Sites, Reinstatement, Interests)
+                # will already have their data. We warn the user to check for consistency.
+                layer.rollBack()
+                
+                QtWidgets.QMessageBox.warning(
+                    iface.mainWindow(), 
+                    "Unsuccessful write",
+                    f"Write to {layer.name} table failed. Please check tables for orphaned records."
+                )
+                return False
+        return True

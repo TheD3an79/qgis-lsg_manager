@@ -6,6 +6,7 @@ from ..functions.export_data import ExportData
 from ..functions.lsg_settings import LSGSettings
 from ..functions.new_site import NewSite
 from ..functions.align_section import AlignSection
+from ..functions.adopt_section import AdoptSection
 
 
 
@@ -140,6 +141,12 @@ class GuiManager:
         self.populate_gui("Align Section",
                           os.path.join(self.icon_path, 'question.svg'),
                           AlignSection,
+                          False,
+                          True)
+        
+        self.populate_gui("Adopt Section - Data Table Layers",
+                          os.path.join(self.icon_path, 'question.svg'),
+                          AdoptSection,
                           False,
                           True)
 

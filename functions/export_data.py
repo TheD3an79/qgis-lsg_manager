@@ -109,11 +109,18 @@ class ExportData:
             # if update only then
             # get the valid date
 
+
+            # get a list of all of the loaded LSG geopackage layers
+            lsg_geopackage_layers = LSGSettings.retrieve_geopackage_layers(self)
+
+            print(lsg_geopackage_layers)
+
+            # TODO - currently the ESU layer is named LSG this will need to be changed
             # think of way to ensure that update works into workflow withput too much hassle
             # if LG update
             if self.b_lg_checked:
-                layer_esu = LSGSettings.retrieve_layer("lyr_esu")
-                layer_sites = LSGSettings.retrieve_layer("lyr_sites")
+                layer_esu = next((layer for layer in lsg_geopackage_layers if layer.name().endswith("LSG")), None)
+                layer_sites = next((layer for layer in lsg_geopackage_layers if layer.name().endswith("Sites")), None)
                 # check ESU and Sites layers are valid and send over to export_lg
                 if layer_esu.isValid() & layer_sites.isValid():
                     # print("Layers valid")
@@ -123,9 +130,9 @@ class ExportData:
 
             # if AD update
             if self.b_ad_checked:
-                layer_interest = LSGSettings.retrieve_layer("lyr_interests")
-                layer_reinstatement = LSGSettings.retrieve_layer("lyr_reinstatements")
-                layer_designation = LSGSettings.retrieve_layer("lyr_designation")
+                layer_interest = next((layer for layer in lsg_geopackage_layers if layer.name().endswith("Interests")), None)
+                layer_reinstatement = next((layer for layer in lsg_geopackage_layers if layer.name().endswith("Reinstatements")), None)
+                layer_designation = next((layer for layer in lsg_geopackage_layers if layer.name().endswith("Designations")), None)
                 # check Reinstatement, Interests and Designations layers are valid and send over to export_ad
                 if layer_interest.isValid() & layer_reinstatement.isValid() & layer_designation.isValid():
                     # print("Layers valid")
